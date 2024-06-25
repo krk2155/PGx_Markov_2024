@@ -13,7 +13,7 @@ Version modified: 0.3.1
 "
 
 #Mac
-setwd("/Users/kun-wookim/Library/CloudStorage/OneDrive-VUMC/Research_discrete-event-simulation/r")
+setwd("/Users/kun-wookim/Library/CloudStorage/OneDrive-VUMC/Research_discrete-event-simulation/r/PGx_Markov_2024")
 
 # Load packages -----------------------------------------------------------
 load.lib<-c("flexsurv", "msm", "dplyr",
@@ -25,16 +25,16 @@ sapply(load.lib,require,character=TRUE)
 
 
 ### Define functions
-source("functions.R")
+source("2024-06-25_functions_v1.0.0.R")
 
 ### Define parameters
 p_Die_background <- 1.0  # Expression: 1
 shape_gompertz <- 0.101  # Expression: 0.101
 rate_gompertz <- 0.001  # Expression: 0.001
-r_condition_annual <- 0.010536051565782628  # Expression: -log(1-r_a_pct)/r_a_dur
 r_a_pct <- 0.1  # Expression: 0.1
 r_a_dur <- 10.0  # Expression: 10
-p_condition_annual <- 0.010480741793785553  # Expression: 1-exp(-r_condition_annual)
+r_condition_annual <- -log(1-r_a_pct)/r_a_dur  # Expression: 0.01053605
+p_condition_annual <- 1-exp(-r_condition_annual)  # Expression: 0.01048074
 
 ### Define variables
 p_Die_bg <- 0.001
@@ -43,9 +43,9 @@ r_Die_bg <- 0.0010005003335835344
 cohortSize <- 1000
 
 # Initialize discount rates
-discountRates <- rep(1, 2)
+discountRates <- c(0.03, 0.03)
 startDiscountCycle <- 0
-halfCycle <- FALSE
+halfCycle <- TRUE
 
 ########## Markov Chain: Live-Die ##########
 print("Running Markov Chain: Live-Die ")
@@ -53,6 +53,7 @@ numStates <- 3
 colNames <- c("Cycle", "Live", "Condition", "Die", "Cycle_Cost", "Cum_Cost", "Cycle_Dis_Cost", "Cum_Dis_Cost", "Cycle_QALE", "Cum_QALE", "Cycle_Dis_QALE", "Cum_Dis_QALE")
 trace <- data.frame(matrix(nrow=0, ncol=12))
 names(trace) <- colNames
+t <- 0  # initialize cycle
 # Initialize prevalence
 curPrev <- c()
 curPrev[1] <- cohortSize * 1  # Live
@@ -60,14 +61,14 @@ curPrev[2] <- cohortSize * 0  # Condition
 curPrev[3] <- cohortSize * 0  # Die
 newPrev <- curPrev  # copy inital prev
 # Initialize variables
-p_Die_bg <- rate_gompertz*exp(shape_gompertz*t)exp(-rate_gompertz/shape_gompertz*(exp(shape_gompertz*t)1))
+p_Die_bg <- rate_gompertz*exp(shape_gompertz*t)
 r_Die_bg <- -log(1-p_Die_bg)
 
 # Run chain
 # Initialize outcomes
 Live_minusDie_Cost <- 0; Live_minusDie_Dis_Cost <- 0
 Live_minusDie_QALE <- 0; Live_minusDie_Dis_QALE <- 0
-t <- 0  # initialize cycle
+
 terminate <- FALSE
 while (terminate == FALSE) {
   # Update progress
