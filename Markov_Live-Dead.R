@@ -57,6 +57,10 @@ survival_gompertz <- function(t) {
   exp(-rate_gompertz / shape_gompertz * (exp(shape_gompertz * t) - 1))
 }
 
+survival_gompertz <- function(t) {
+  1-shape_gompertz * (exp(rate_gompertz * t) - 1)
+}
+
 
 ########## Markov Chain: Live-Die ##########
 print("Running Markov Chain: Live-Die ")
@@ -73,7 +77,7 @@ newPrev <- curPrev  # copy inital prev
 
 # Initialize variables
 t <- 0  # initialize cycle
-r_Die_bg <- rate_gompertz*(exp(shape_gompertz*t))
+r_Die_bg <- 1-exp(-shape_gompertz*(exp(rate_gompertz * t) - 1))
 p_Die_bg <- 1-exp(-r_Die_bg)
              
 # Run chain
