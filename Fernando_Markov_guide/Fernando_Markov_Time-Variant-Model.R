@@ -12,17 +12,15 @@ sapply(load.lib,require,character=TRUE)
 
 cycle_length <- 1 # cycle length equal one year (use 1/12 for monthly)
 
-n_age_init <- 25 # age at baseline 
-n_age_max <- 100 # maximum age of follow up 
+n_age_init <- 40 # age at baseline 
+n_age_max <- 120 # maximum age of follow up 
 n_cycles <- (n_age_max - n_age_init)/cycle_length # time horizon, number of cycles 
-v_names_states <- c("H", "S1", "S2", "D") # the 4 health states of the model: # Healthy (H), Sick (S1), Sicker (S2), Dead (D) 
+v_names_states <- c("A","D") # the 2 health states of the model: # Alive (A), Dead (D)
 n_states <- length(v_names_states) # number of health states 
 d_e <- 0.03 # annual discount rate for QALYs of 3% 
 d_c <- 0.03 # annual discount rate for costs of 3% 
-v_names_str <- c("Standard of care", # store the strategy names
-                "Strategy A", 
-                "Strategy B", 
-                "Strategy AB")
+v_names_str <- c("Standard of care") # store the strategy names
+
 
 
 # Transition probabilities (annual), and hazard ratios (HRs)  -------------
