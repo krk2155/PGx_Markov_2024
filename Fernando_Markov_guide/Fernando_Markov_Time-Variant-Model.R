@@ -47,15 +47,17 @@ u_D <- 0 # annual utility of being dead
 
 # Transition Probabilities2 -----------------------------------------------
 ## Mortality rates
-survival_gompertz <- function(t, rate, shape) {
-  exp(-rate / shape * (exp(shape * t) - 1))
+## Probabilities of dying (Cycle-specific) ----------------------------------
+p_background_death_gompertz <- function(t, rate_gompertz, shape_gompertz) {
+  1-exp(-rate_gompertz*exp(shape_gompertz*t))
 }
 
 
 # Create an empty dataframe for the lifetable
 lifetable <- data.frame(
-  Age = n_age_init:(n_age_init + 40),  # Let's consider up to age 80
-  Population = numeric(41)
+  Age = n_age_init:(n_age_init + 41),  # Let's consider up to age 80
+  Population = numeric(42),
+  Prob_Death_Annual = numeric(42)
 )
 lifetable$Population[1] <- n_pop
 
@@ -63,46 +65,18 @@ lifetable$Population[1] <- n_pop
 for (i in 2:nrow(lifetable)) {
   age <- lifetable$Age[i]
   prev_age <- lifetable$Age[i - 1]
-  S_prev <- survival_gompertz(prev_age, rate_gompertz, shape_gompertz)
-  S_current <- survival_gompertz(age, rate_gompertz, shape_gompertz)
-  lifetable$Population[i] <- lifetable$Population[i - 1] * (S_current / S_prev)
+  lifetable$Prob_Death_Annual[i-1] <- p_background_death_gompertz(i-1, rate_gompertz, shape_gompertz)
+  lifetable$Population[i] <- lifetable$Population[i - 1] * lifetable$Prob_Death_Annual[i-1]
 }
 
-# Print the lifetable
-print(lifetable)
 
-# Add survival probability and hazard rate columns to the lifetable
-lifetable$Survival_Probability <- numeric(41)
-lifetable$Hazard_Rate <- numeric(41)
+# Extract age-specific mortality rate for all cycles
+v_p_mort_by_age <- lifetable %>%
+  dplyr::filter(Age >= n_age_init & Age <n_age_max)%>%
+  dplyr::select(Prob_Death_Annual)%>%
+  as.matrix()
 
-# Calculate survival probabilities and hazard rates
-for (i in 1:nrow(lifetable)) {
-  age <- lifetable$Age[i]
-  if (i > 1) {
-    lifetable$Survival_Probability[i] <- lifetable$Population[i] / lifetable$Population[i - 1]
-  } else {
-    lifetable$Survival_Probability[i] <- 1  # Initial survival probability is 1
-  }
-  lifetable$Hazard_Rate[i] <- rate_gompertz * exp(shape_gompertz * age)
-}
-
-v_r_HDage <- rep(v_r_mort_by_age, each = 1/cycle_length)
-
-# NOTE (20240630): 
-# 1. Double-check if the lifetable was created correctly
-# 2. add the values from the Hazard Rate column to "v_r_HDage"
-# 3. convert v_r_HDage into v_p_HDage
-# 4. use v_p_HDage in the matrix for Alive -> Dead transition probability
-
-# Print the extended lifetable
-print(lifetable)
-
-
-
-## Probabilities of dying (Cycle-specific) ----------------------------------
-r_HD <- rate_gompertz*(exp(shape_gompertz*t)) # rate of background mortality
-p_HD <- 1-exp(-r_HD) # probability of background mortality
-
+v_p_HDage <- rep(v_p_mort_by_age, each =1/cycle_length)
 
 # Starting Population -----------------------------------------------------
 v_m_init <- c(H = 1, D = 0) # initial state vector
@@ -130,21 +104,21 @@ a_P_SoC <- array (0, dim = c(n_states, n_states, n_cycles),
 ### Fill in matrix ----------------------------------------------------------
 # From H
 
-m_P["A", "A", ] <- (1 - p_HD) 
-m_P["A", "D", ] <- p_HD
-m_P["D", "A", ] <- 0
-m_P["D", "D", ] <- 1
+a_P_SoC["A", "A", ] <- (1 - v_p_HDage) 
+a_P_SoC["A", "D", ] <- v_p_HDage
+a_P_SoC["D", "A", ] <- 0
+a_P_SoC["D", "D", ] <- 1
 
 ## Initialize transition probability matrix for strategy A as a cop --------
 
-m_M_No_PGx <- m_P
+m_M_No_PGx <- a_P_SoC
 
 
 ## Initialize transition probability matrix for strategy B -----------------
-m_M_PGx <- m_P ## Update only transition probabilities from S1 involving p_S1S2
+m_M_PGx <- a_P_SoC ## Update only transition probabilities from S1 involving p_S1S2
 
 ### Check if transition probability matrices are valid
-## Check that transition probabilities are [0, 1]
+a_P_SoC[, , 1]
 
 ## Check that all rows sum to 1 
 rowSums(m_P) == 1 
@@ -156,7 +130,7 @@ rowSums(m_M_PGx) == 1
 for(t in 1:n_cycles){
   
   # For SoC 
-  m_M[t + 1, ] <- m_M[t, ] %*% m_P[, , t]
+  m_M[t + 1, ] <- m_M[t, ] %*% a_P_SoC[, , t]
 }
 
 
