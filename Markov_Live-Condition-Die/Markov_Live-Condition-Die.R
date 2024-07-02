@@ -1,5 +1,6 @@
 # Date          Task
-# 7/2/2024        - remove PGx & No-PGx; only 1 trace remains
+# 7/2/2024        - started HCD model
+
 
 
 #Mac
@@ -15,7 +16,7 @@ sapply(load.lib,require,character=TRUE)
 ### Define functions
 source("check_transition_probabilities.R")
 
-  
+
 ## General setup
 
 cycle_length <- 1 # cycle length equal one year (use 1/12 for monthly)
@@ -24,7 +25,7 @@ n_pop <- 1000
 n_age_init <- 40 # age at baseline 
 n_age_max <- 1000 # maximum age of follow up 
 n_cycles <- (n_age_max - n_age_init)/cycle_length # time horizon, number of cycles 
-v_names_states <- c("A","D") # the 2 health states of the model: # Alive (A), Dead (D)
+v_names_states <- c("H","C", "D") # the 2 health states of the model: # Alive (A), Dead (D)
 n_states <- length(v_names_states) # number of health states 
 d_e <- 0 # annual discount rate for QALYs of 3% 
 d_c <- 0 # annual discount rate for costs of 3% 
@@ -63,7 +64,7 @@ p_background_death_gompertz <- function(t, rate_gompertz, shape_gompertz) {
 
 # Create an empty dataframe for the lifetable
 lifetable <- data.frame(
-  Age = n_age_init:(n_age_max+1), 
+  Age = n_age_init:(n_age_max+1),  
   Population = numeric(n_age_max-n_age_init+2),
   Prob_Death_Annual = numeric(n_age_max-n_age_init+2)
 )
@@ -87,7 +88,7 @@ v_p_mort_by_age <- lifetable %>%
 v_p_HDage <- rep(v_p_mort_by_age, each =1/cycle_length)
 
 # Starting Population -----------------------------------------------------
-v_m_init <- c(H = 1, D = 0) # initial state vector
+v_m_init <- c(H = 1, C = 0, D = 0) # initial state vector
 
 
 ## Initialize cohort trace for SoC -----------------------------------------
@@ -101,15 +102,25 @@ m_M[1, ] <- v_m_init
 
 ## Initialize transition probability matrix for strategy SoC ---------------
 a_P_SoC <- array (0, dim = c(n_states, n_states, n_cycles+1),
-               dimnames = list(v_names_states, v_names_states, 0:(n_cycles))) # row and column names
+                  dimnames = list(v_names_states, v_names_states, 0:(n_cycles))) # row and column names
 
 
 ### Fill in matrix ----------------------------------------------------------
 # From H
-a_P_SoC["A", "A", ] <- (1 - v_p_HDage) 
-a_P_SoC["A", "D", ] <- v_p_HDage
-a_P_SoC["D", "A", ] <- 0
+a_P_SoC["H", "H", ] <- (1 - v_p_HDage) * (1 - p_HC)
+a_P_SoC["H", "C", ] <- (1 - v_p_HDage) * p_HC 
+a_P_SoC["H", "D", ] <- v_p_HDage
+
+# From C
+a_P_SoC["C", "H", ] <- 0
+a_P_SoC["C", "C", ] <- (1 - v_p_HDage)
+a_P_SoC["C", "D", ] <- v_p_HDage
+
+# From D
+a_P_SoC["D", "H", ] <- 0
+a_P_SoC["D", "C", ] <- 0
 a_P_SoC["D", "D", ] <- 1
+
 
 ### Check if transition probability matrices are valid
 a_P_SoC[, , 1]
@@ -124,15 +135,14 @@ for(t in 1:n_cycles){
 }
 
 
-
 # Cost and effectiveness outcomes -----------------------------------------
 ## State rewards -----------------------------------------------------------
 
 # Vector of state utilities under SOC
-v_u_SoC <- c(H = u_H, D = u_D) * cycle_length
+v_u_SoC <- c(H = u_H, C = u_C, D = u_D) * cycle_length
 
 # Vector of state costs under SoC
-v_c_SoC <- c(H = c_H, D = c_D) * cycle_length
+v_c_SoC <- c(H = c_H, C = c_C, D = c_D) * cycle_length
 
 # Vector of QALYs under SoC
 v_qaly_SoC <- m_M %*% v_u_SoC 
@@ -148,7 +158,7 @@ is_even <- function(x) x %% 2 == 0
 is_odd <- function(x) x %% 2 != 0 
 ## Vector with cycles 
 v_cycles <- seq(1, n_cycles + 1) 
-
+length(v_cycles)
 ## Generate 2/3 and 4/3 multipliers for even and odd entries, respectively 
 v_wcc <- is_even(v_cycles)*(2/3) + is_odd(v_cycles)*(4/3) 
 length(v_wcc)
@@ -175,4 +185,5 @@ n_tot_qaly_SoC_no_dwe_no_wcc
 n_tot_cost_SoC <- t(v_cost_SoC) %*% (v_dwc * v_wcc)
 
 n_tot_cost_SoC
+
 
