@@ -1,3 +1,7 @@
+# Date          Task
+# 7/2/2024        - remove PGx & No-PGx; only 1 trace remains
+
+
 #Mac
 setwd("/Users/kun-wookim/Library/CloudStorage/OneDrive-VUMC/Research_discrete-event-simulation/r/PGx_Markov_2024")
 
@@ -72,7 +76,7 @@ for (i in 2:nrow(lifetable)) {
 
 # Extract age-specific mortality rate for all cycles
 v_p_mort_by_age <- lifetable %>%
-  dplyr::filter(Age >= n_age_init & Age <n_age_max)%>%
+  dplyr::filter(Age >= n_age_init & Age <=n_age_max)%>%
   dplyr::select(Prob_Death_Annual)%>%
   as.matrix()
 
@@ -83,56 +87,43 @@ v_m_init <- c(H = 1, D = 0) # initial state vector
 
 
 ## Initialize cohort trace for SoC -----------------------------------------
-## Recall: "SoC" -> "Standard of Care"
+## m_M: trace matrix
+## SoC: Standard of Care
 m_M <- matrix(NA, 
               nrow = (n_cycles + 1), ncol = n_states, 
               dimnames = list(0:n_cycles, v_names_states)) 
 # Store the initial state vector in the first row of the cohort trace 
 m_M[1, ] <- v_m_init 
 
-## Initialize cohort trace for strategies A, B, and AB  --------------------
-#Structure and initial states are the same as for SoC 
-m_M_No_PGx <- m_M # Strategy Without PGx Testing
-m_M_PGx <- m_M # Strategy With PGx Testing
-
-
-
 ## Initialize transition probability matrix for strategy SoC ---------------
-a_P_SoC <- array (0, dim = c(n_states, n_states, n_cycles),
-               dimnames = list(v_names_states, v_names_states, 0:(n_cycles-1))) # row and column names
+a_P_SoC <- array (0, dim = c(n_states, n_states, n_cycles+1),
+               dimnames = list(v_names_states, v_names_states, 0:(n_cycles))) # row and column names
+
 
 ### Fill in matrix ----------------------------------------------------------
 # From H
+length(a_P_SoC[,,])
+v_p_HDage
+length(v_p_HDage)
 
 a_P_SoC["A", "A", ] <- (1 - v_p_HDage) 
 a_P_SoC["A", "D", ] <- v_p_HDage
 a_P_SoC["D", "A", ] <- 0
 a_P_SoC["D", "D", ] <- 1
 
-## Initialize transition probability matrix for strategy A as a cop --------
-
-m_M_No_PGx <- a_P_SoC
-
-
-## Initialize transition probability matrix for strategy B -----------------
-m_M_PGx <- a_P_SoC ## Update only transition probabilities from S1 involving p_S1S2
-
 ### Check if transition probability matrices are valid
 a_P_SoC[, , 1]
-
+a_P_SoC
 ## Check that all rows sum to 1 
-rowSums(m_P) == 1 
-rowSums(m_M_No_PGx) == 1 
-rowSums(m_M_PGx) == 1 
+rowSums(a_P_SoC[, , 1]) == 1 
 
 # Iterative solution of time-independent cSTM
-
 for(t in 1:n_cycles){
-  
   # For SoC 
   m_M[t + 1, ] <- m_M[t, ] %*% a_P_SoC[, , t]
 }
 
+m_M
 
 # Cost and effectiveness outcomes -----------------------------------------
 ## State rewards -----------------------------------------------------------
@@ -145,7 +136,7 @@ v_c_SoC <- c(H = c_H, D = c_D) * cycle_length
 
 # Vector of QALYs under SoC
 v_qaly_SoC <- m_M %*% v_u_SoC 
-
+v_qaly_SoC
 # Vector of costs under SoC
 v_cost_SoC <- m_M %*% v_c_SoC 
 
