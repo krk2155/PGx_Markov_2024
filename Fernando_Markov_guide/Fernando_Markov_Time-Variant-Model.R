@@ -7,11 +7,15 @@ setwd("/Users/kun-wookim/Library/CloudStorage/OneDrive-VUMC/Research_discrete-ev
 
 # Load packages -----------------------------------------------------------
 load.lib<-c("flexsurv", "msm", "dplyr", "markovchain", "heemod", "dampack",
-            "ggplot2", "reshape2")
+            "devtools", "ggplot2", "reshape2")
 install.lib<-load.lib[!load.lib %in% installed.packages()]
 for(lib in install.lib) install.packages(lib,dependencies=TRUE)
 sapply(load.lib,require,character=TRUE)
 
+### Define functions
+source("check_transition_probabilities.R")
+
+  
 ## General setup
 
 cycle_length <- 1 # cycle length equal one year (use 1/12 for monthly)
@@ -102,10 +106,6 @@ a_P_SoC <- array (0, dim = c(n_states, n_states, n_cycles+1),
 
 ### Fill in matrix ----------------------------------------------------------
 # From H
-length(a_P_SoC[,,])
-v_p_HDage
-length(v_p_HDage)
-
 a_P_SoC["A", "A", ] <- (1 - v_p_HDage) 
 a_P_SoC["A", "D", ] <- v_p_HDage
 a_P_SoC["D", "A", ] <- 0
@@ -113,7 +113,7 @@ a_P_SoC["D", "D", ] <- 1
 
 ### Check if transition probability matrices are valid
 a_P_SoC[, , 1]
-a_P_SoC
+
 ## Check that all rows sum to 1 
 rowSums(a_P_SoC[, , 1]) == 1 
 
@@ -123,7 +123,7 @@ for(t in 1:n_cycles){
   m_M[t + 1, ] <- m_M[t, ] %*% a_P_SoC[, , t]
 }
 
-m_M
+
 
 # Cost and effectiveness outcomes -----------------------------------------
 ## State rewards -----------------------------------------------------------
@@ -136,7 +136,7 @@ v_c_SoC <- c(H = c_H, D = c_D) * cycle_length
 
 # Vector of QALYs under SoC
 v_qaly_SoC <- m_M %*% v_u_SoC 
-v_qaly_SoC
+
 # Vector of costs under SoC
 v_cost_SoC <- m_M %*% v_c_SoC 
 
@@ -148,10 +148,10 @@ is_even <- function(x) x %% 2 == 0
 is_odd <- function(x) x %% 2 != 0 
 ## Vector with cycles 
 v_cycles <- seq(1, n_cycles + 1) 
-
+length(v_cycles)
 ## Generate 2/3 and 4/3 multipliers for even and odd entries, respectively 
 v_wcc <- is_even(v_cycles)*(2/3) + is_odd(v_cycles)*(4/3) 
-
+length(v_wcc)
 ## Substitute 1/3 in first and last entries 
 v_wcc[1] <- v_wcc[n_cycles + 1] <- 1/3
 
@@ -167,139 +167,10 @@ v_dwc <- 1 / ((1 + (d_c * cycle_length)) ^ (0:n_cycles))
 ## Expected discounted QALYs under SoC
 n_tot_qaly_SoC <- t(v_qaly_SoC) %*% (v_dwe * v_wcc)
 
+n_tot_qaly_SoC
+
 ## Expected discounted costs under SoC
 n_tot_cost_SoC <- t(v_cost_SoC) %*% (v_dwc * v_wcc)
 
-
-# Incremental cost-effectiveness ratios (ICERs) ---------------------------
-### Vector of costs
-
-v_cost_str <- c(n_tot_cost_SoC) 
-
-### Vector of effectiveness 
-v_qaly_str <- c(n_tot_qaly_SoC) 
-
-calculate_icers <- function(cost, effect, strategies) {
-  # checks on input
-  n_cost <- length(cost)
-  n_eff <- length(effect)
-  n_strat <- length(strategies)
-  if (n_cost != n_eff | n_eff != n_strat) {
-    stop("cost, effect, and strategies must all be vectors of the same length", call. = FALSE)
-  }
-  
-  # coerce to character, in case they are provided as numeric
-  char_strat <- as.character(strategies)
-  
-  # create data frame to hold data
-  df <- data.frame("Strategy" = char_strat,
-                   "Cost" = cost,
-                   "Effect" = effect,
-                   stringsAsFactors = FALSE)
-  nstrat <- nrow(df)
-  
-  # if only one strategy was provided, return df with NAs for incremental
-  if (nstrat == 1) {
-    df[, c("ICER", "Inc_Cost", "Inc_Effect")] <- NA
-    return(df)
-  }
-  
-  # three statuses: dominated, extended dominated, and non-dominated
-  d <- NULL
-  
-  # detect dominated strategies
-  # dominated strategies have a higher cost and lower effect
-  df <- df %>%
-    arrange(.data$Cost, desc(.data$Effect))
-  
-  # iterate over strategies and detect (strongly) dominated strategies
-  # those with higher cost and equal or lower effect
-  for (i in 1:(nstrat - 1)) {
-    ith_effect <- df[i, "Effect"]
-    for (j in (i + 1):nstrat) {
-      jth_effect <- df[j, "Effect"]
-      if (jth_effect <= ith_effect) {
-        # append dominated strategies to vector
-        d <- c(d, df[j, "Strategy"])
-      }
-    }
-  }
-  
-  # detect weakly dominated strategies (extended dominance)
-  # this needs to be repeated until there are no more ED strategies
-  ed <- vector()
-  continue <- TRUE  # ensure that the loop is run at least once
-  while (continue) {
-    # vector of all dominated strategies (strong or weak)
-    dom <- union(d, ed)
-    
-    # strategies declared to be non-dominated at this point
-    nd <- setdiff(strategies, dom)
-    
-    # compute icers for nd strategies
-    nd_df <- df[df$Strategy %in% nd, ] %>%
-      compute_icers()
-    
-    # number non-d
-    n_non_d <- nrow(nd_df)
-    
-    # if only two strategies left, we're done
-    if (n_non_d <= 2) {
-      break
-    }
-    
-    # strategy identifiers for non-d
-    nd_strat <- nd_df$Strategy
-    
-    # now, go through non-d strategies and detect any
-    # with higher ICER than following strategy
-    ## keep track of whether any ED strategies are picked up
-    # if not, we're done - exit the loop
-    new_ed <- 0
-    for (i in 2:(n_non_d - 1)) {
-      if (nd_df[i, "ICER"] > nd_df[i + 1, "ICER"]) {
-        ed <- c(ed, nd_strat[i])
-        new_ed <- new_ed + 1
-      }
-    }
-    if (new_ed == 0) {
-      continue <- FALSE
-    }
-  }
-  
-  # recompute icers without weakly dominated strategies
-  nd_df_icers <- nd_df[!(nd_df$Strategy %in% dom), ] %>%
-    mutate(Status = "ND") %>%
-    compute_icers()
-  
-  # dominated and weakly dominated
-  d_df <- df[df$Strategy %in% d, ] %>%
-    mutate(ICER = NA, Status = "D")
-  
-  ed_df <- df[df$Strategy %in% ed, ] %>%
-    mutate(ICER = NA, Status = "ED")
-  
-  # when combining, sort so we have ref,ND,ED,D
-  results <- bind_rows(d_df, ed_df, nd_df_icers) %>%
-    arrange(desc(.data$Status), .data$Cost, desc(.data$Effect))
-  
-  # re-arrange columns
-  results <- results %>%
-    select(.data$Strategy, .data$Cost, .data$Effect,
-           .data$Inc_Cost, .data$Inc_Effect, .data$ICER, .data$Status)
-  
-  # declare class of results
-  class(results) <- c("icers", "data.frame")
-  return(results)
-}
-
-### Calculate incremental cost-effectiveness ratios (ICERs) 
-df_cea <- calculate_icers(cost = v_cost_str,
-                                   effect = v_qaly_str, 
-                                   strategies = v_names_str)
-df_cea
-
-# Probabilistic sensitivity analysis --------------------------------------
-
-
+n_tot_cost_SoC
 
